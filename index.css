@@ -1,0 +1,121 @@
+@font-face {
+	font-family: PermanentMarker;
+	src:         url(PermanentMarker-Regular.ttf);
+	font-weight: normal;
+}
+
+@font-face {
+	font-family: Source Code Pro;
+	src:         url(saira-v5-latin-regular.ttf);
+	font-weight: normal;
+}
+
+.unselectable, #canvas, #canvas tr, #canvas td, #canvas table {
+	-moz-user-select: -moz-none;
+	-khtml-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+	user-select: none;
+}
+
+body {
+	font-family: sans-serif;
+}
+
+input[type="number"] {
+	max-width: 3em;
+}
+
+table, td {
+	margin: 0;
+	padding: 0;
+}
+
+hr {
+	border: none;
+	border-top: 1px solid #cfcfcf;
+}
+
+/* ==== Glyph table ==== */
+#glyphs {
+	position: absolute;
+	right: 0;
+	top: 0;
+	width: 50%;
+	height: 100%;
+	padding-right: 1em;
+	text-align: center;
+	overflow: auto;
+}
+
+#glyphs canvas {
+	display: inline-block;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	text-align: center;
+}
+
+/* ==== Editor ==== */
+#editor {
+	position: absolute;
+	left: 0;
+	top: 0;
+	max-width: 50%;
+	height: 100%;
+	padding-left: 1em;
+}
+#canvas td {
+	width:  10px;
+	height: 10px;
+	margin: 0;
+	padding: 0;
+	box-sizing: border-box;
+}
+#canvas table {
+	border-collapse: collapse;
+	border: 1px solid #cfcfcf;
+}
+
+#canvas.grid td {
+	border-top: 1px solid #cfcfcf;
+	border-left: 1px solid #cfcfcf;
+}
+#canvas.ruler td[x="0"] {
+	border-left: 1px solid red;
+}
+#canvas.ruler td[y="0"] {
+	border-top: 1px solid red;
+}
+
+
+.outline-left {
+	border-left: 1px solid blue !important;
+}
+.outline-top {
+	border-top: 1px solid blue !important;
+}
+
+.glyph-left {
+	border-left: 1px solid green !important;
+}
+.glyph-top {
+	border-top: 1px solid green !important;
+}
+
+/* ==== Editor tools ==== */
+#shift_buttons {
+	display: inline-block;
+	vertical-align: middle;
+}
+#shift_buttons button {
+	font-size: 50%;
+	width: 2em;
+	height: 2em;
+	margin: 0;
+	display: block;
+}
+#shift_buttons, #edit-buttons td {
+	margin: 0;
+	padding: 0;
+}
