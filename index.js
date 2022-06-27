@@ -2,8 +2,8 @@
 var convCtx;
 var font        = "Source Code Pro";
 var fontUrl     =
-// "https://robot.scheffers.net/s/font/saira/saira-v5-latin-regular.ttf";
-"https://fonts.cdnfonts.com/s/12262/PermanentMarker.woff";
+"https://robot.scheffers.net/s/font/saira/saira-v5-latin-regular.ttf";
+// "https://fonts.cdnfonts.com/s/12262/PermanentMarker.woff";
 var fontGlyphs;
 var fontRanges;
 
@@ -158,6 +158,11 @@ function loaded() {
 		copyGlyph(glyphToCopy);
 	};
 	
+	// Invert all.
+	document.getElementById("invert").onclick = () => {
+		invertGlyph();
+	};
+	
 	// TRANSLATE... ?
 	document.getElementById("shift_up").onclick = () => {
 		shiftGrid(0, -1);
@@ -202,10 +207,6 @@ function loaded() {
 	} else if (saveSelElem.value in localStorage) {
 		saveSlotSelected(saveSelElem);
 	}
-	
-	// window.onbeforeunload = () => {
-	// 	return unsavedData ? "Leave without saving?" : null;
-	// }
 }
 
 
@@ -307,12 +308,12 @@ function shiftGrid(dx, dy) {
 		for (var y = 0; y < gridHeight - 1; y++) {
 			gridData[y] = gridData[y + 1];
 		}
-		gridData[gridHeight - 1] = Array(gridWidth).fill(false)
+		gridData[gridHeight - 1] = Array(gridWidth).fill(0)
 	} else if (dy > 0) {
 		for (var y = gridHeight - 2; y >= 0; y--) {
 			gridData[y + 1] = gridData[y];
 		}
-		gridData[0] = Array(gridWidth).fill(false)
+		gridData[0] = Array(gridWidth).fill(0)
 	}
 	glyphChanged();
 	redrawPreview(glyph);
@@ -386,7 +387,7 @@ function extractGridData(dx, dy, width, height) {
 function clearGrid() {
 	for (var y = 0; y < gridHeight; y++) {
 		for (var x = 0; x < gridWidth; x++) {
-			gridData[y][x] = false;
+			gridData[y][x] = 0;
 		}
 	}
 	document.querySelectorAll("#canvas td").forEach(
@@ -400,7 +401,8 @@ function insertData(dx, dy, width, height, data) {
 		for (var x = 0; x < width; x++) {
 			var value = gridData[y + dy - gridDy][x + dx - gridDx] = data[y][x];
 			var elem  = document.querySelector(`#canvas td[x="${x+dx}"][y="${y+dy}"]`);
-			elem.style.backgroundColor = value ? "black" : "white";
+			var rounded = 255 - Math.round(value * 255);
+			elem.style.backgroundColor = `#${Number(rounded).toString(16).repeat(3)}`;
 		}
 	}
 	showGlyphOutlines(undefined);
@@ -412,6 +414,9 @@ function insertData(dx, dy, width, height, data) {
 
 // Convert a glyph from a pre-existing font into the current slot.
 function convertGlyphToCurrent(font, text, threshold=127) {
+	var bpp = Number(document.querySelector("#bpp").value);
+	var resolution = (1 << bpp) - 1;
+	
 	// Paint the font thingy.
 	convCtx.clearRect(0, 0, 200, 200);
 	convCtx.font         = `${glyphHeight}px ${font}`;
@@ -429,8 +434,9 @@ function convertGlyphToCurrent(font, text, threshold=127) {
 		for (var x = 0; x < gridWidth; x++) {
 			// We care about the alpha value of pixels.
 			var index = (y * gridWidth + x) * 4 + 3;
-			var value = arr[index] > threshold;
-			paintCell(x, y, value);
+			var value = arr[index] / 255;
+			value = Math.round(value * resolution) / resolution;
+			setCell(x, y, value);
 		}
 	}
 	showGlyphOutlines(undefined);
@@ -454,19 +460,36 @@ function startFullConversion() {
 }
 
 // Paint a single pixel of the glyph.
-function paintCell(x, y, value) {
+// Argument paint: True is increase, False is decrease.
+function paintCell(x, y, paint) {
+	var bpp = Number(document.querySelector("#bpp").value);
+	var resolution = (1 << bpp) - 1;
+	
+	if (paint == undefined) {
+		paint = gridData[y][x] < 0.5;
+	}
+	paintValue = !!paint;
+	paint = paint ? 1 : -1;
+	
+	// Compute the new value.
+	var oldVal = gridData[y][x];
+	var newVal = (Math.round(oldVal * resolution) + paint) / resolution;
+	newVal = Math.max(0, Math.min(1, newVal));
+	
+	// Set it.
+	setCell(x, y, newVal);
+}
+
+// Set the absolute value of a single pixel of the glyph.
+function setCell(x, y, value) {
+	var rounded = 255 - Math.round(value * 255);
+	
 	// Update the big grid.
 	var elem = document.getElementById(`canvas_${x}_${y}`);
-	if (value == undefined) {
-		value = !gridData[y][x];
-	} else {
-		value = !!value;
-	}
-	elem.style.backgroundColor = value ? "black" : "white";
+	elem.style.backgroundColor = `#${Number(rounded).toString(16).repeat(3)}`;
 	elem.setAttribute("value", value);
 	
 	// Update some datas.
-	paintValue = value;
 	gridData[y][x] = value;
 	unsavedData = true;
 }
@@ -487,6 +510,22 @@ function copyGlyph(source) {
 	}
 	glyphChanged();
 	showGlyphOutlines(undefined);
+	redrawPreview(glyph);
+}
+
+// Invert the current glyph's data.
+// Only inverts inside the drawn region.
+function invertGlyph() {
+	var dims = getGlyphBounds();
+	
+	// Iterate the drawn region.
+	for (var y = dims.y - gridDy; y < dims.y - gridDy + dims.height; y++) {
+		for (var x = dims.x - gridDx; x < dims.x - gridDx + dims.width; x++) {
+			setCell(x, y, 1 - gridData[y][x]);
+		}
+	}
+	
+	glyphChanged();
 	redrawPreview(glyph);
 }
 
@@ -583,7 +622,9 @@ function redrawPreview(glyph) {
 		dy += data.bounds.y;
 		for (var y = 0; y < data.bounds.height; y++) {
 			for (var x = 0; x < data.bounds.width; x++) {
-				ctx.fillStyle = data.data[y][x] ? "black" : "white";
+				var value = data.data[y][x];
+				var rounded = 255 - Math.round(value * 255);
+				ctx.fillStyle = `#${Number(rounded).toString(16).repeat(3)}`;
 				ctx.fillRect(x+dx, y+dy, 1, 1);
 			}
 		}
@@ -628,7 +669,7 @@ function getGlyphBounds() {
 	var x1 = -Infinity, y1 = -Infinity;
 	for (var y = 0; y < gridHeight; y++) {
 		for (var x = 0; x < gridWidth; x++) {
-			if (!gridData[y][x]) continue;
+			if (gridData[y][x] <= 0.001) continue;
 			x0 = Math.min(x0, x);
 			y0 = Math.min(y0, y);
 			x1 = Math.max(x1, x);
@@ -757,6 +798,7 @@ function importData(input, doBase64=false) {
 	document.getElementById("ruler_y").value         = -gridDy;
 	document.getElementById("canvas_width").value    = gridWidth;
 	document.getElementById("canvas_height").value   = gridHeight;
+	document.getElementById("glyph_height").value    = glyphHeight;
 	
 	document.getElementById("show_grid").checked     = importData.showGrid;
 	document.getElementById("show_ruler").checked    = importData.showRuler;
@@ -820,15 +862,19 @@ function downloadBase64(name, data) {
 /* ==== C/C++ data handling ==== */
 
 // Converts raw glyph data to bytes.
-function glyphToBytes(width, height, data) {
-	var bytesPerLine = Math.ceil(width / 8);
+function glyphToBytes(width, height, data, bpp) {
+	var resolution = (1 << bpp) - 1;
+	var bytesPerLine = Math.ceil(width * bpp / 8);
 	var out = Array(bytesPerLine * height);
 	
 	for (var y = 0; y < height; y++) {
 		for (var x = 0; x < width; x++) {
-			var bitIndex  = x % 8;
-			var byteIndex = Math.floor(x / 8) + bytesPerLine * y;
-			out[byteIndex] |= data[y][x] * 1 << bitIndex;
+			var bitIndex    = (x*bpp) % 8;
+			var byteIndex   = Math.floor((x*bpp) / 8) + bytesPerLine * y;
+			var rounded     = Math.round(data[y][x] * resolution);
+			out[byteIndex] |= rounded << bitIndex;
+			var spill       = out[byteIndex] & ~255;
+			if (spill) out[byteIndex + 1] |= spill >> 8;
 		}
 	}
 	
@@ -899,7 +945,7 @@ function intArrFromC(str) {
 }
 
 // Exports the font as monospace, cropping anything outsize the box.
-function exportMonospaceSimple(id, width, height) {
+function exportMonospaceSimple(id, width, height, bpp) {
 	var raw = '#include <pax_fonts.h>\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
@@ -909,7 +955,7 @@ function exportMonospaceSimple(id, width, height) {
 		for (var glyph = range.start; glyph <= range.end; glyph++) {
 			selectGlyph(glyph);
 			var data = extractGridData(0, 0, width, height);
-			bytes = bytes.concat(glyphToBytes(width, height, data));
+			bytes = bytes.concat(glyphToBytes(width, height, data, bpp));
 		}
 		raw += intArrToC('uint8_t', `${id}_r${i}`, bytes);
 	}
@@ -920,14 +966,15 @@ function exportMonospaceSimple(id, width, height) {
 		var range = fontRanges[i];
 		raw +=
 			`{ // Range ${i+1} / ${fontRanges.length}.\n`+
-			`	.type  = PAX_FONT_BITMAP_MONO,\n`+
+			`	.type  = PAX_FONT_TYPE_BITMAP_MONO,\n`+
 			`	.start = 0x${range.start.toString(16)},\n`+
 			`	.end   = 0x${range.end.toString(16)},\n`+
 			`	.bitmap_mono = {\n`+
 			`		.glyphs = ${id}_r${i},\n`+
 			`		.width  = ${width},\n`+
 			`		.height = ${height},\n`+
-			`	},`+
+			`		.bpp    = ${bpp},\n`+
+			`	},\n`+
 			`}, `;
 	}
 	raw += `\n};\nconst size_t ${id}_ranges_len = sizeof(${id}_ranges) / sizeof(pax_font_range_t);\n`;
@@ -936,7 +983,7 @@ function exportMonospaceSimple(id, width, height) {
 }
 
 // Exports the font as variable pitch.
-function exportVariable(id, height) {
+function exportVariable(id, height, bpp) {
 	var raw = '#include <pax_fonts.h>\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
@@ -950,7 +997,7 @@ function exportVariable(id, height) {
 			var data = glyphs[glyph];
 			indices = indices.concat(bytes.length);
 			if (data.visible) {
-				bytes = bytes.concat(glyphToBytes(data.bounds.width, data.bounds.height, data.data));
+				bytes = bytes.concat(glyphToBytes(data.bounds.width, data.bounds.height, data.data, bpp));
 			}
 		}
 		raw += intArrToC('uint8_t', `${id}_r${i}`, bytes);
@@ -990,13 +1037,14 @@ function exportVariable(id, height) {
 		var range = fontRanges[i];
 		raw +=
 			`{ // Range ${i+1} / ${fontRanges.length}.\n`+
-			`	.type  = PAX_FONT_BITMAP_VAR,\n`+
+			`	.type  = PAX_FONT_TYPE_BITMAP_VAR,\n`+
 			`	.start = 0x${range.start.toString(16)},\n`+
 			`	.end   = 0x${range.end.toString(16)},\n`+
 			`	.bitmap_var = {\n`+
 			`		.glyphs = ${id}_r${i},\n`+
 			`		.dims   = ${id}_r${i}_dims,\n`+
 			`		.height = ${height},\n`+
+			`		.bpp    = ${bpp},\n`+
 			`	},\n`+
 			`}, `;
 	}
