@@ -40,6 +40,13 @@ function loaded() {
 		font = event.target.value;
 		saveData();
 	};
+	document.getElementById("font_name").oninput = (event) => {
+		document.getElementById("export_name")
+			.setAttribute("placeholder", convertName(event.target.value));
+	};
+	document.getElementById("export_name").setAttribute(
+		"placeholder", convertName(document.getElementById("font_name").value)
+	);
 	document.getElementById("font_url").onchange = (event) => {
 		fontUrl = event.target.value;
 		saveData();
@@ -218,6 +225,15 @@ function loaded() {
 	} else if (saveSelElem.value in localStorage) {
 		saveSlotSelected(saveSelElem);
 	}
+	
+	// Exporting options.
+	document.getElementById("export").onclick = () => {
+		id = convertName(document.getElementById("export_name").value);
+		if (!id) id = convertName(document.getElementById("export_name").placeholder);
+		if (!id) id = "customfont";
+		exported = exportVariable(id, glyphHeight, bpp);
+		downloadBase64(id + ".c", exported);
+	};
 }
 
 
@@ -928,7 +944,7 @@ function downloadBase64(name, data) {
 
 
 
-/* ==== C/C++ data handling ==== */
+/* ==== Exporting functions ==== */
 
 // Converts raw glyph data to bytes.
 function glyphToBytes(width, height, data, bpp) {
@@ -944,23 +960,6 @@ function glyphToBytes(width, height, data, bpp) {
 			out[byteIndex] |= rounded << bitIndex;
 			var spill       = out[byteIndex] & ~255;
 			if (spill) out[byteIndex + 1] |= spill >> 8;
-		}
-	}
-	
-	return out;
-}
-
-// Converts bytes to raw glyph data.
-function glyphFromBytes(width, height, bytes) {
-	var bytesPerLine = Math.ceil(width / 8);
-	var out = Array(height);
-	
-	for (var y = 0; y < height; y++) {
-		out[y] = Array(width);
-		for (var x = 0; x < width; x++) {
-			var bitIndex  = x % 8;
-			var byteIndex = Math.floor(x / 8) + bytesPerLine * y;
-			out[y][x]     = !!((bytes[byteIndex] >> bitIndex) & 1);
 		}
 	}
 	
@@ -993,24 +992,6 @@ function objectToC(data, prototype, isConst=true) {
 			out += `.${key}=${objectToC(data[key])}`;
 		}
 	}
-}
-
-// Extracts an integer array from a C constant.
-function intArrFromC(str) {
-	var out = [];
-	
-	var start = str.indexOf('{');
-	var end   = str.indexOf('}');
-	console.log(str);
-	
-	while (str) {
-		index = str.indexOf(',');
-		if (index == -1) index = str.length;
-		out = out.concat(Number(str.substring(0, index)));
-		str = str.substring(index + 1);
-	}
-	
-	return out;
 }
 
 // Exports the font as monospace, cropping anything outsize the box.
@@ -1052,7 +1033,7 @@ function exportMonospaceSimple(id, width, height, bpp) {
 }
 
 // Exports the font as variable pitch.
-function exportVariable(id, height, bpp) {
+function exportVariable(id, height, bpp, name=undefined) {
 	var raw = '#include <pax_fonts.h>\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
@@ -1117,7 +1098,23 @@ function exportVariable(id, height, bpp) {
 			`	},\n`+
 			`}, `;
 	}
-	raw += `\n};\nconst size_t ${id}_ranges_len = sizeof(${id}_ranges) / sizeof(pax_font_range_t);\n`;
+	raw += `\n};\nconst size_t ${id}_ranges_len = sizeof(${id}_ranges) / sizeof(pax_font_range_t);\n\n`;
+	if (name) {
+		raw +=
+			`// Completed font.\n`+
+			`const pax_cont_t ${id} = {\n`+
+			`	.name         = "${name}",\n`+
+			`	.n_ranges     = sizeof(${id}_ranges) / sizeof(pax_font_range_t),\n`+
+			`	.ranges       = ${id}_ranges,\n`+
+			`	.default_size = ${height},\n`+
+			`	.recommend_aa = ${bpp > 1 ? "true" : "false"},\n`+
+			`};\n`;
+	}
 	
 	return raw;
+}
+
+// Converts the font's name to a C identifier.
+function convertName(raw) {
+	return raw.replace(/[^\w]/g, "").toLowerCase();
 }

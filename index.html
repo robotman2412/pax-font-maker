@@ -31,6 +31,7 @@
 			</div>
 			
 			<hr>
+			<h3>Glyph settings</h3>
 			<!-- Bitmap settings !-->
 			<input value="1" type="number" id="bpp">
 			<label for="bpp">Bits per pixel</label><br>
@@ -74,7 +75,7 @@
 			</table>
 			
 			<hr>
-			
+			<h3>Quick edits</h3>
 			<!-- Glyph selection !-->
 			Glyph:
 			<button id="prev_glyph">&lt;</button>
@@ -107,13 +108,25 @@
 			<div id="canvas" class="grid ruler">
 			</div><br>
 			
+			<hr>
+			<h3>Management</h3>
 			<!-- Save data !-->
 			Saved fonts:
 			<select id="save_slot">
 				<option value="unsaved">Unsaved</option>
 				<option value="new_slot">New save slot...</option>
 			</select><br>
-			<button id="download">Download this font</button>
+			<button id="download">Download this font</button><br>
+			
+			<hr>
+			<h3>Exporting</h3>
+			
+			<!-- Exporting !-->
+			<input checked type="checkbox" id="export_split">
+			<label for="export_split">Split export</label><br>
+			Font ID:
+			<input id="export_name" placeholder="font_id">
+			<button id="export">Export this font</button>
 		</div>
 	</body>
 </html>
