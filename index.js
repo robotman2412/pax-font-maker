@@ -23,7 +23,7 @@ var paintValue  = true;
 var maxWidth    = 0;
 
 var glyphs      = {};
-var glyphToCopy = 65;
+var glyphToCopy = null;
 var unsavedData = false;
 
 var saveSelElem;
@@ -119,10 +119,14 @@ function loaded() {
 		updateRanges();
 	};
 	document.getElementById("canvas_width").oninput = (event) => {
-		resizeGrid(Number(event.target.value), gridHeight);
+		gridWidth = Number(event.target.value);
+		enforceGlyphFits(glyphs[glyph]);
+		resizeGrid(gridWidth, gridHeight);
 	};
 	document.getElementById("canvas_height").oninput = (event) => {
-		resizeGrid(gridWidth, Number(event.target.value));
+		gridHeight = Number(event.target.value);
+		enforceGlyphFits(glyphs[glyph]);
+		resizeGrid(gridWidth, glyphHeight);
 	};
 	
 	// Glyph selection.
@@ -159,10 +163,10 @@ function loaded() {
 	
 	// Copy/paste.
 	document.getElementById("copy").onclick = () => {
-		glyphToCopy = glyph;
+		glyphToCopy = copyGlyph();
 	};
 	document.getElementById("paste").onclick = () => {
-		copyGlyph(glyphToCopy);
+		pasteGlyph(glyphToCopy);
 	};
 	
 	// Invert all.
@@ -262,7 +266,7 @@ function makeGrid(elem, id, dx, dy, width, height, callback) {
 }
 
 // Resize the grid.
-function resizeGrid(w, h) {
+function resizeGrid(w, h, select=true) {
 	gridWidth  = w;
 	gridHeight = h;
 	
@@ -287,7 +291,8 @@ function resizeGrid(w, h) {
 		};
 	});
 	
-	selectGlyph(glyph);
+	if (select)
+		selectGlyph(glyph);
 }
 
 // Shift the contents of the grid.
@@ -415,6 +420,30 @@ function insertData(dx, dy, width, height, data) {
 	showGlyphOutlines(undefined);
 }
 
+// Enforce a certain glyph fits in the grid.
+function enforceGlyphFits(data) {
+	var resize = false;
+	if (!data || !data.bounds) return true;
+	if (data.bounds.x < gridDx) {
+		gridWidth += data.bounds.x - gridDx;
+		gridDx     = data.bounds.x;
+		resize     = true;
+	}
+	if (data.bounds.y < gridDy) {
+		gridHeight += data.bounds.y - gridDy;
+		gridDy      = data.bounds.y;
+		resize     = true;
+	}
+	if (data.bounds.x + data.bounds.width - gridDx >= gridWidth) {
+		gridWidth = data.bounds.x + data.bounds.width - gridDx;
+		resize     = true;
+	}
+	if (data.bounds.y + data.bounds.height - gridDy >= gridHeight) {
+		gridWidth = data.bounds.x + data.bounds.width - gridDx;
+		resize     = true;
+	}
+	return resize;
+}
 
 
 /* ==== Editor functions ==== */
@@ -501,11 +530,38 @@ function setCell(x, y, value) {
 	unsavedData = true;
 }
 
+// Copy the data of another glyph.
+function copyGlyph() {
+	// Get raw data.
+	var data = glyphs[glyph];
+	var copy = {
+		glyph:   data.glyph,
+		visible: data.visible,
+		width:   glyphWidth,
+		data: [],
+	};
+	if (copy.visible) {
+		// Copy bounds.
+		copy.bounds = {
+			x:      data.bounds.x,
+			y:      data.bounds.y,
+			width:  data.bounds.width,
+			height: data.bounds.height,
+		};
+		copy.data = Array(data.bounds.height);
+		// Copy data.
+		for (var y = 0; y < data.bounds.height; y++) {
+			copy.data[y] = Array(data.bounds.width);
+			for (var x = 0; x < data.bounds.width; x++) {
+				copy.data[y][x] = data.data[y][x];
+			}
+		}
+	}
+	return copy;
+}
+
 // Copy the data of another glyph onto the current.
-function copyGlyph(source) {
-	if (source == glyph || !source) return;
-	
-	var data = glyphs[source];
+function pasteGlyph(data) {
 	if (data) {
 		glyphWidth = data.width;
 		document.getElementById("glyph_width").value = glyphWidth;
@@ -656,12 +712,19 @@ function selectGlyph(codepoint) {
 	document.getElementById("glyph_point").value = unicodeNumber(codepoint);
 	glyph = codepoint;
 	
-	clearGrid();
 	var data = glyphs[glyph];
+	clearGrid();
 	if (data) {
-		glyphWidth = data.width;
 		document.getElementById("glyph_width").value = glyphWidth;
 		if (data.visible) {
+			
+			// Enforce grid is big enough.
+			if (enforceGlyphFits(data)) {
+				resizeGrid(gridWidth, gridHeight, false);
+			}
+			
+			// Insert data.
+			glyphWidth = data.width;
 			document.getElementById("glyph_width").value = glyphWidth;
 			insertData(data.bounds.x, data.bounds.y, data.bounds.width, data.bounds.height, data.data);
 		}
