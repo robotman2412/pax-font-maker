@@ -150,6 +150,13 @@ function loaded() {
 		if (!isNaN(index)) selectGlyph(index);
 	};
 	
+	// Clear the grid.
+	document.getElementById("clear_grid").onclick = () => {
+		clearGrid();
+		glyphChanged();
+		redrawPreview(glyph);
+	};
+	
 	// Copy/paste.
 	document.getElementById("copy").onclick = () => {
 		glyphToCopy = glyph;
@@ -498,7 +505,6 @@ function setCell(x, y, value) {
 function copyGlyph(source) {
 	if (source == glyph || !source) return;
 	
-	clearGrid();
 	var data = glyphs[source];
 	if (data) {
 		glyphWidth = data.width;
