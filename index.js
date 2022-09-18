@@ -26,6 +26,7 @@ var glyphs      = {};
 var glyphToCopy = null;
 var unsavedData = false;
 
+var importFileElem;
 var saveSelElem;
 var saveName    = font;
 var storageKey  = null;
@@ -204,6 +205,18 @@ function loaded() {
 	saveSelElem.oninput = () => saveSlotSelected(saveSelElem);
 	document.getElementById("download").onclick = () => {
 		downloadBase64(`${font}.json`, exportData(saveName));
+	};
+	
+	// Importing controls.
+	document.getElementById("import_button").onclick = () => {
+		document.getElementById("import_file").click();
+	};
+	
+	importFileElem = document.getElementById("import_file")
+	importFileElem.onchange = () => {
+		if (importFileElem.files[0]) {
+			importFileElem.files[0].text().then((text) => importData(text, false));
+		}
 	};
 	
 	// Import storage.
@@ -1117,4 +1130,35 @@ function exportVariable(id, height, bpp, name=undefined) {
 // Converts the font's name to a C identifier.
 function convertName(raw) {
 	return raw.replace(/[^\w]/g, "").toLowerCase();
+}
+
+// Appends a number with a given amount of bytes to an array.
+function appendRawNumber(to, number, bytes) {
+	for (; bytes > 0; bytes --) {
+		to[to.length] = number & 255;
+		number >>= 8;
+	}
+}
+
+// Appends a string in its bytes form to an array.
+function appendString(to, string, withTerm=false) {
+	for (i = 0; i < string.length; i++) {
+		to[to.length] = string.charCodeAt(i);
+	}
+	if (withTerm) {
+		to[to.length] = 0;
+	}
+}
+
+// Exports the font as a PAX font file.
+function exportFontFile(height, bpp, name="A font") {
+	var raw = []
+	
+	// Magic value.
+	appendString(raw, "pax_font_t", true);
+	
+	// Font loader version.
+	appendRawNumber(raw, 1, 1);
+	
+	return raw;
 }

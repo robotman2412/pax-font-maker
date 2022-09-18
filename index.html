@@ -116,7 +116,10 @@
 				<option value="unsaved">Unsaved</option>
 				<option value="new_slot">New save slot...</option>
 			</select><br>
-			<button id="download">Download this font</button><br>
+			<button id="download">Download this font</button>
+			<input style="display:none" id="import_file" type="file">
+			<button id="import_button">Import a font...</button>
+			<button id="delete">Delete this font</button><br>
 			
 			<hr>
 			<h3>Exporting</h3>
@@ -126,7 +129,7 @@
 			<label for="export_split">Split export</label><br>
 			Font ID:
 			<input id="export_name" placeholder="font_id">
-			<button id="export">Export this font</button>
+			<button id="export">Export this font</button><br>
 		</div>
 	</body>
 </html>

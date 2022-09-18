@@ -121,6 +121,8 @@ h2, h3, h4, h5, h6 {
 	width: 2em;
 	height: 2em;
 	margin: 0;
+	padding: 0;
+	text-align: center;
 	display: block;
 }
 #shift_buttons, #edit-buttons td {
