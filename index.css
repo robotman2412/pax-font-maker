@@ -22,6 +22,10 @@ body {
 	font-family: sans-serif;
 }
 
+body.simple .advanced {
+	display: none;
+}
+
 input[type="number"] {
 	max-width: 3em;
 }

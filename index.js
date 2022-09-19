@@ -41,13 +41,6 @@ function loaded() {
 		font = event.target.value;
 		saveData();
 	};
-	document.getElementById("font_name").oninput = (event) => {
-		document.getElementById("export_name")
-			.setAttribute("placeholder", convertName(event.target.value));
-	};
-	document.getElementById("export_name").setAttribute(
-		"placeholder", convertName(document.getElementById("font_name").value)
-	);
 	document.getElementById("font_url").onchange = (event) => {
 		fontUrl = event.target.value;
 		saveData();
@@ -85,6 +78,9 @@ function loaded() {
 	
 	// Grid settings.
 	document.onkeydown = (event) => {
+		if (document.activeElement && document.activeElement.tagName.toLowerCase() == 'input') {
+			return;
+		}
 		if (event.key == '-' || event.key == '_') {
 			scaleGrid(-1);
 		} else if (event.key == '+' || event.key == '=') {
@@ -134,7 +130,7 @@ function loaded() {
 	document.getElementById("canvas_height").oninput = (event) => {
 		gridHeight = Number(event.target.value);
 		enforceGlyphFits(glyphs[glyph]);
-		resizeGrid(gridWidth, glyphHeight);
+		resizeGrid(gridWidth, gridHeight);
 	};
 	
 	// Glyph selection.
@@ -145,21 +141,18 @@ function loaded() {
 		selectGlyph(glyph + 1);
 	}
 	document.getElementById("glyph_text").oninput = (event) => {
-		var str = event.target.value.trim();
-		if (str.length == 1) {
-			selectGlyph(str.codePointAt(0));
-		} else {
-			var index = Number(`0x${str}`);
-			if (!isNaN(index)) selectGlyph(index);
+		var str = event.target.value;
+		if (str.length > 0) {
+			selectGlyph(str.codePointAt(str.length - 1));
 		}
 	}
 	document.getElementById("glyph_point").onchange = (event) => {
 		var str = event.target.value.trim();
-		if (str.toLowerCase().startsWith("u+")) {
+		if (str.toLowerCase().startsWith("u+") || str.toLowerCase().startsWith("0x")) {
 			str = str.substring(2);
 		}
-		var index = Number(`0x${str}`);
-		if (!isNaN(index)) selectGlyph(index);
+		var index = parseInt(str, 16);
+		if (!isNaN(index) && index > 0) selectGlyph(index);
 	};
 	
 	// Clear the grid.
@@ -195,6 +188,17 @@ function loaded() {
 	document.getElementById("shift_right").onclick = () => {
 		shiftGrid(1, 0);
 	};
+	
+	// Advancement.
+	document.getElementById("show_advanced").onclick = (event) => {
+		document.body.classList.remove("simple");
+		if (!event.target.checked) {
+			document.body.classList.add("simple");
+		}
+	};
+	if (!document.getElementById("show_advanced").checked) {
+		document.body.classList.add("simple");
+	}
 	
 	// Set up the grid!
 	resizeGrid(gridWidth, gridHeight);
@@ -240,12 +244,23 @@ function loaded() {
 	}
 	
 	// Exporting options.
-	document.getElementById("export").onclick = () => {
-		id = convertName(document.getElementById("export_name").value);
-		if (!id) id = convertName(document.getElementById("export_name").placeholder);
-		if (!id) id = "customfont";
-		exported = exportVariable(id, glyphHeight, bpp);
-		downloadBase64(id + ".c", exported);
+	// document.getElementById("export_c").onclick = () => {
+	// 	var id = convertName(font);
+	// 	var bpp = +document.getElementById("bpp").value;
+	// 	var exported = exportVariable(id, glyphHeight, bpp, font, false);
+	// 	downloadBase64(font + ".c", exported);
+	// };
+	document.getElementById("export_c_h").onclick = () => {
+		var id = convertName(font);
+		var bpp = +document.getElementById("bpp").value;
+		var exported = exportVariable(id, glyphHeight, bpp, font, true);
+		downloadBase64(font + ".c", exported.c);
+		downloadBase64(font + ".h", exported.h);
+	};
+	document.getElementById("export_file").onclick = () => {
+		var bpp = +document.getElementById("bpp").value;
+		exported = exportFontFile(glyphHeight, bpp, font);
+		downloadBinary(font + ".pax_font", exported, false);
 	};
 }
 
@@ -298,9 +313,6 @@ function makeGrid(elem, id, dx, dy, width, height, callback) {
 function resizeGrid(w, h, select=true) {
 	gridWidth  = w;
 	gridHeight = h;
-	
-	document.getElementById("canvas_width").value = gridWidth;
-	document.getElementById("canvas_height").value = gridHeight;
 	
 	gridData = makeGrid(
 		document.getElementById("canvas"), "canvas", 
@@ -894,13 +906,16 @@ function importData(input, doBase64=false) {
 	
 	document.getElementById("ruler_x").value         = -gridDx;
 	document.getElementById("ruler_y").value         = -gridDy;
-	document.getElementById("canvas_width").value    = gridWidth;
-	document.getElementById("canvas_height").value   = gridHeight;
 	document.getElementById("glyph_height").value    = glyphHeight;
 	
 	document.getElementById("show_grid").checked     = importData.showGrid;
 	document.getElementById("show_ruler").checked    = importData.showRuler;
 	document.getElementById("show_outlines").checked = importData.showOutlines;
+	
+	gridWidth  = Math.max(-2*gridDx + glyphWidth,  glyphWidth,  gridWidth);
+	gridHeight = Math.max(-2*gridDx + glyphHeight, glyphHeight, gridHeight);
+	document.getElementById("canvas_width").value  = gridWidth;
+	document.getElementById("canvas_height").value = gridHeight;
 	
 	gridElem.classList.remove("grid", "ruler");
 	if (importData.showGrid) gridElem.classList.add("grid");
@@ -947,10 +962,50 @@ function saveSlotSelected(elem, old_value="unsaved") {
 	localStorage.setItem("font_selected", saveSelElem.value);
 }
 
-// Downloads your crappy string.
-function downloadBase64(name, data) {
+// Downloads your text file.
+function downloadBase64(name, data, isText=true) {
 	var a = document.createElement("a");
-	a.href = `data:application/octet-stream;charset=utf-8;base64,${btoa(data)}`;
+	a.href = `data:application/octet-stream;${isText?'charset=utf-8;':''}base64,${btoa(data)}`;
+	a.setAttribute("download", name);
+	a.click();
+}
+
+// Turns binary into base64.
+function bin2b64(binary) {
+	let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	
+	// Dirty way: Turn binary into array of bits.
+	var bits = [];
+	for (var i = 0; i < binary.length; i++) {
+		var tmp = binary[i];
+		for (var x = 0; x < 8; x++) {
+			bits[i*8 + x] = (tmp & 128) ? 1 : 0;
+			tmp <<= 1;
+		}
+	}
+	
+	// Then, collect the bits.
+	var out = "";
+	for (i = 0; i < bits.length; i += 6) {
+		var tmp = 0;
+		for (var x = 0; x < 6; x++) {
+			tmp <<= 1;
+			tmp  |= bits[i + x] == 1;
+		}
+		out += alphabet[tmp];
+	}
+	
+	// Add padding.
+	var padd = 4 - out.length % 4;
+	if (padd != 4) out += "=".repeat(padd);
+	
+	return out;
+}
+
+// Downloads your binary file.
+function downloadBinary(name, data) {
+	var a = document.createElement("a");
+	a.href = `data:application/octet-stream;base64,${bin2b64(data)}`;
 	a.setAttribute("download", name);
 	a.click();
 }
@@ -1046,8 +1101,8 @@ function exportMonospaceSimple(id, width, height, bpp) {
 }
 
 // Exports the font as variable pitch.
-function exportVariable(id, height, bpp, name=undefined) {
-	var raw = '#include <pax_fonts.h>\n// Raw data.\n';
+function exportVariable(id, height, bpp, name, split) {
+	var raw = '// Generated file, edit at your own risk!\n#include <pax_fonts.h>\n\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
 	for (var i = 0; i < fontRanges.length; i++) {
@@ -1095,7 +1150,7 @@ function exportVariable(id, height, bpp, name=undefined) {
 	}
 	
 	// Create the combining parts.
-	raw += `// Combined ranges.\nconst pax_font_range_t ${id}_ranges[] = {\n`;
+	raw += `// Combined ranges.\nconst pax_font_range_t ${id}_ranges[${fontRanges.length}] = {\n`;
 	for (var i = 0; i < fontRanges.length; i++) {
 		var range = fontRanges[i];
 		raw +=
@@ -1111,20 +1166,33 @@ function exportVariable(id, height, bpp, name=undefined) {
 			`	},\n`+
 			`}, `;
 	}
-	raw += `\n};\nconst size_t ${id}_ranges_len = sizeof(${id}_ranges) / sizeof(pax_font_range_t);\n\n`;
+	raw += `\n};\nconst size_t ${id}_ranges_len = ${fontRanges.length};\n\n`;
+	
+	// Create the font definition.
+	var header = '';
+	if (split && name) {
+		header += 
+			`// Generated file, edit at your own risk!\n`+
+			`#pragma once\n\n`+
+			`extern const pax_font_range_t ${id}_ranges[${fontRanges.length}];\n\n`;
+	}
 	if (name) {
-		raw +=
+		header +=
 			`// Completed font.\n`+
-			`const pax_cont_t ${id} = {\n`+
+			`const pax_font_t ${id} = {\n`+
 			`	.name         = "${name}",\n`+
-			`	.n_ranges     = sizeof(${id}_ranges) / sizeof(pax_font_range_t),\n`+
+			`	.n_ranges     = ${fontRanges.length},\n`+
 			`	.ranges       = ${id}_ranges,\n`+
 			`	.default_size = ${height},\n`+
 			`	.recommend_aa = ${bpp > 1 ? "true" : "false"},\n`+
-			`};\n`;
+			`};\n\n`;
 	}
 	
-	return raw;
+	if (split) {
+		return {c: raw, h: header};
+	} else {
+		return raw + header;
+	}
 }
 
 // Converts the font's name to a C identifier.
@@ -1142,7 +1210,7 @@ function appendRawNumber(to, number, bytes) {
 
 // Appends a string in its bytes form to an array.
 function appendString(to, string, withTerm=false) {
-	for (i = 0; i < string.length; i++) {
+	for (var i = 0; i < string.length; i++) {
 		to[to.length] = string.charCodeAt(i);
 	}
 	if (withTerm) {
@@ -1151,14 +1219,125 @@ function appendString(to, string, withTerm=false) {
 }
 
 // Exports the font as a PAX font file.
-function exportFontFile(height, bpp, name="A font") {
-	var raw = []
+function exportFontFile(height, bpp, name="A font", antialiasing=true) {
+	var raw = [];
 	
-	// Magic value.
+	var rangeDims       = [];
+	var rangeBitmaps    = [];
+	
+	var totalBitmapSize = 0;
+	var totalDims       = 0;
+	
+	// Start with preprocessing some ranges.
+	for (var i = 0; i < fontRanges.length; i++) {
+		var range = fontRanges[i];
+		var indices = [];
+		
+		// Create some byte arrays.
+		var bytes = [];
+		for (var glyph = range.start; glyph <= range.end; glyph++) {
+			var data = glyphs[glyph];
+			indices = indices.concat(bytes.length);
+			if (data.visible) {
+				bytes = bytes.concat(glyphToBytes(data.bounds.width, data.bounds.height, data.data, bpp));
+			}
+		}
+		rangeBitmaps[i]  = bytes;
+		totalBitmapSize += bytes.length;
+		
+		// Then create the dimensions arrays.
+		rangeDims[i] = [];
+		for (var glyph = range.start; glyph <= range.end; glyph++) {
+			var data = glyphs[glyph];
+			var dims;
+			if (data.visible) {
+				dims = {
+					draw_x:         data.bounds.x,
+					draw_y:         data.bounds.y,
+					draw_w:         data.bounds.width,
+					draw_h:         data.bounds.height,
+					measured_width: data.width,
+					index:          indices[glyph-range.start],
+				};
+			} else {
+				dims = {
+					draw_x:         0,
+					draw_y:         0,
+					draw_w:         0,
+					draw_h:         0,
+					measured_width: data.width,
+					index:          indices[glyph-range.start],
+				};
+			}
+			rangeDims[i][glyph-range.start] = dims;
+		}
+		totalDims += rangeDims[i].length;
+	}
+	
+	/* ==== MAGIC BYTES ==== */
 	appendString(raw, "pax_font_t", true);
 	
+	/* ==== PLATFORM METADATA ==== */
 	// Font loader version.
-	appendRawNumber(raw, 1, 1);
+	appendRawNumber(raw, 1, 2);
+	
+	/* ==== FONT METADATA ==== */
+	// Total number of pax_bmpv_t.
+	appendRawNumber(raw, totalDims,         8);
+	// Total size of the bitmap data.
+	appendRawNumber(raw, totalBitmapSize,   8);
+	// Length excluding null terminator of the name.
+	appendRawNumber(raw, name.length,       8);
+	// Number of ranges in the font.
+	appendRawNumber(raw, fontRanges.length, 8);
+	// Default size of the font in pixels.
+	appendRawNumber(raw, height,            2);
+	// Whether antialiasing is recommended.
+	appendRawNumber(raw, +!!antialiasing,   1)
+	
+	/* ==== RANGE DATA ==== */
+	for (var i = 0; i < fontRanges.length; i++) {
+		var range = fontRanges[i];
+		
+		// Range type (variable pitch).
+		appendRawNumber(raw, 1,           1);
+		// Range start.
+		appendRawNumber(raw, range.start, 4);
+		// Range end.
+		appendRawNumber(raw, range.end,   4);
+		// Range height.
+		appendRawNumber(raw, height,      1);
+		// Range bit per pixel.
+		appendRawNumber(raw, bpp,         1);
+		
+		// Range bitmap dimensions.
+		for (var x = 0; x < rangeDims[i].length; x++) {
+			var bmpv = rangeDims[i][x];
+			console.log(i, x, bmpv);
+			
+			// Bitmap draw X offset.
+			appendRawNumber(raw, bmpv.draw_x,         1);
+			// Bitmap draw Y offset.
+			appendRawNumber(raw, bmpv.draw_y,         1);
+			// Bitmap drawn width.
+			appendRawNumber(raw, bmpv.draw_w,         1);
+			// Bitmap drawn height.
+			appendRawNumber(raw, bmpv.draw_h,         1);
+			// Bitmap measured width.
+			appendRawNumber(raw, bmpv.measured_width, 1);
+			// Bitmap data index.
+			appendRawNumber(raw, bmpv.index,          8);
+		}
+	}
+	
+	/* ==== RAW DATA ==== */
+	// Write bitmap data.
+	for (var i = 0; i < fontRanges.length; i++) {
+		raw = raw.concat(rangeBitmaps[i]);
+	}
+	
+	// Write font name.
+	appendString(raw, name, true);
 	
 	return raw;
 }

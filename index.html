@@ -14,7 +14,7 @@
 			
 		</div>
 		<div id="editor">
-			<h1>EDITOR</h1>
+			<h1>PAX font tool</h1>
 			<!-- Importing options !-->
 			<table>
 				<tr>
@@ -31,20 +31,24 @@
 			</div>
 			
 			<hr>
-			<h3>Glyph settings</h3>
+			<h3>Settings</h3>
 			<!-- Bitmap settings !-->
-			<input value="1" type="number" id="bpp">
+			<input value="2" type="number" id="bpp">
 			<label for="bpp">Bits per pixel</label><br>
+			<input value="2" type="checkbox" id="show_advanced">
+			<label for="show_advanced">Show advanced options</label><br>
 			
 			<!-- Visualisations !-->
-			<input checked type="checkbox" id="show_grid">
-			<label for="show_grid">Show grid</label><br>
-			
-			<input checked type="checkbox" id="show_ruler">
-			<label for="show_ruler">Show ruler</label><br>
-			
-			<input checked type="checkbox" id="show_outlines">
-			<label for="show_outlines">Show glyph outlines</label><br>
+			<div class="advanced">
+				<input checked type="checkbox" id="show_grid">
+				<label for="show_grid">Show grid</label><br>
+				
+				<input checked type="checkbox" id="show_ruler">
+				<label for="show_ruler">Show ruler</label><br>
+				
+				<input checked type="checkbox" id="show_outlines">
+				<label for="show_outlines">Show glyph outlines</label><br>
+			</div>
 			
 			<!-- Dimensions !-->
 			<table>
@@ -75,40 +79,41 @@
 			</table>
 			
 			<hr>
-			<h3>Quick edits</h3>
+			<h3 class="advanced">Quick edits</h3>
 			<!-- Glyph selection !-->
 			Glyph:
 			<button id="prev_glyph">&lt;</button>
 			<input style="max-width: 1.5em" id="glyph_text" value="A">
 			<input style="max-width: 4.5em" id="glyph_point" value="U+00041">
 			<button id="next_glyph">&gt;</button><br>
-			
-			<!-- Editor tools !-->
-			<button id="clear_grid">Clear grid</button>
-			<button id="copy">Copy glyph</button>
-			<button id="paste">Paste glyph</button>
-			<button id="invert">Invert glyph</button>
-			
-			<!-- Shifty buttons !-->
-			Move
-			<table id="shift_buttons">
-				<tr><td></td>
-				<td><button id="shift_up">^</button></td>
-				<td></td></tr>
 				
-				<tr><td><button id="shift_left">&lt;</button></td>
-				<td></td>
-				<td><button id="shift_right">&gt;</button></td></tr>
+			<div class="advanced">
+				<!-- Editor tools !-->
+				<button id="clear_grid">Clear grid</button>
+				<button id="copy">Copy glyph</button>
+				<button id="paste">Paste glyph</button>
+				<button id="invert">Invert glyph</button>
 				
-				<tr><td></td>
-				<td><button id="shift_down">v</button></td>
-				<td></td></tr>
-			</table>
+				<!-- Shifty buttons !-->
+				Move
+				<table id="shift_buttons">
+					<tr><td></td>
+					<td><button id="shift_up">^</button></td>
+					<td></td></tr>
+					
+					<tr><td><button id="shift_left">&lt;</button></td>
+					<td></td>
+					<td><button id="shift_right">&gt;</button></td></tr>
+					
+					<tr><td></td>
+					<td><button id="shift_down">v</button></td>
+					<td></td></tr>
+				</table>
+			</div>
 			
-			<div id="canvas" class="grid ruler">
-			</div><br>
-			
+			<div id="canvas" class="grid ruler"></div>
 			<hr>
+			
 			<h3>Management</h3>
 			<!-- Save data !-->
 			Saved fonts:
@@ -116,20 +121,18 @@
 				<option value="unsaved">Unsaved</option>
 				<option value="new_slot">New save slot...</option>
 			</select><br>
-			<button id="download">Download this font</button>
+			<button id="download">Export as JSON</button>
 			<input style="display:none" id="import_file" type="file">
-			<button id="import_button">Import a font...</button>
+			<button id="import_button">Import from JSON</button>
 			<button id="delete">Delete this font</button><br>
 			
 			<hr>
 			<h3>Exporting</h3>
 			
 			<!-- Exporting !-->
-			<input checked type="checkbox" id="export_split">
-			<label for="export_split">Split export</label><br>
-			Font ID:
-			<input id="export_name" placeholder="font_id">
-			<button id="export">Export this font</button><br>
+			<!-- <button id="export_c">Export as .c</button> -->
+			<button id="export_c_h">Export as .c, .h</button>
+			<button id="export_file">Export as .pax_font</button><br>
 		</div>
 	</body>
 </html>
