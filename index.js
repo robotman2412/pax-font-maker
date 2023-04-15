@@ -155,6 +155,14 @@ function loaded() {
 		if (!isNaN(index) && index > 0) selectGlyph(index);
 	};
 	
+	// Delete glyph.
+	document.getElementById("delete_glyph").onclick = (event) => {
+		clearGrid();
+		deleteGlyph(glyph);
+		glyphChanged();
+		updateRanges();
+	};
+	
 	// Clear the grid.
 	document.getElementById("clear_grid").onclick = () => {
 		clearGrid();
@@ -259,7 +267,7 @@ function loaded() {
 	
 	// Exporting options.
 	document.getElementById("export_c_h").onclick = () => {
-		if (document.getElementById("export_mono").value) {
+		if (document.getElementById("export_mono").checked) {
 			if (!isMonospaceFont()) {
 				alert("Cannot export as monospace font");
 				return;
@@ -278,7 +286,11 @@ function loaded() {
 		}
 	};
 	document.getElementById("export_file").onclick = () => {
-		if (document.getElementById("export_mono").value) {
+		if (document.getElementById("export_mono").checked) {
+			if (!isMonospaceFont()) {
+				alert("Cannot export as monospace font");
+				return;
+			}
 			var bpp = +document.getElementById("bpp").value;
 			exported = exportFontFile(glyphHeight, bpp, font, true);
 			downloadBinary(font + ".pax_font", exported, false);
@@ -645,6 +657,24 @@ function pasteGlyph(data) {
 	redrawPreview(glyph);
 }
 
+// Delete a glyph by index.
+function deleteGlyph(glyph) {
+	let i = fontGlyphs.indexOf(glyph);
+	if (i < 0) return;
+	delete glyphs[glyph];
+	fontGlyphs.splice(i, 1);
+}
+
+// Delete a range of glyphs.
+function deleteRange(start, end) {
+	if (glyph >= start && glyph <= end) clearGrid();
+	for (var i = start; i <= end; i++) {
+		deleteGlyph(i);
+	}
+	glyphChanged();
+	updateRanges();
+}
+
 // Invert the current glyph's data.
 // Only inverts inside the drawn region.
 function invertGlyph() {
@@ -715,7 +745,7 @@ function updateRanges() {
 		var count = range.end - range.start + 1;
 		var elem = document.getElementById(`range_${i}`);
 		elem.width = 8 * 2 * glyphHeight;
-		elem.height = glyphHeight * Math.max(count / 8) + glyphHeight;
+		elem.height = glyphHeight * Math.floor(count / 8) + glyphHeight;
 		
 		for (var glyph = range.start; glyph <= range.end; glyph ++) {
 			redrawPreview(glyph);
@@ -1102,6 +1132,7 @@ function readBytes(stream, len) {
 // Imports the font from PAX font file.
 function importFontFile(data) {
 	var stream = { data: data, index: 0 };
+	var detBPP = 1;
 	
 	// Check magic.
 	var magic_str = readString(stream, 11);
@@ -1154,6 +1185,7 @@ function importFontFile(data) {
 			let gheight = readU8(stream);
 			// Range bits per pixel.
 			let gbpp    = readU8(stream);
+			if (gbpp > detBPP) detBPP = gbpp;
 			
 			// Construct range objects.
 			for (var x = rstart; x <= rend; x++) {
@@ -1172,6 +1204,7 @@ function importFontFile(data) {
 			let gheight = readU8(stream);
 			// Range bits per pixel.
 			let gbpp    = readU8(stream);
+			if (gbpp > detBPP) detBPP = gbpp;
 			
 			// Construct range objects.
 			for (var x = rstart; x <= rend; x++) {
@@ -1275,8 +1308,10 @@ function importFontFile(data) {
 	font = readString(stream, n_name);
 	saveName = font;
 	document.getElementById("font_name").value = font;
+	document.getElementById("bpp").value = detBPP;
 	updateRanges();
 	selectGlyph(0x41);
+	glyphChanged();
 }
 
 
@@ -1659,7 +1694,6 @@ function exportFontFile(height, bpp, name="A font", monospace=false) {
 			// Variable pitch range bitmap dimensions.
 			for (var x = 0; x < rangeDims[i].length; x++) {
 				var bmpv = rangeDims[i][x];
-				console.log(i, x, bmpv);
 				
 				// Bitmap draw X offset.
 				appendRawNumber(raw, bmpv.draw_x,         1);
