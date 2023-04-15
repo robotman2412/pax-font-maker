@@ -476,6 +476,9 @@ function clearGrid() {
 
 // Insert data into the grid.
 function insertData(dx, dy, width, height, data) {
+	if (gridWidth < width && gridHeight < height) resizeGrid(width, height);
+	else if (gridWidth < width) resizeGrid(width, gridHeight);
+	else if (gridHeight < height) resizeGrid(gridWidth, height);
 	for (var y = 0; y < height; y++) {
 		for (var x = 0; x < width; x++) {
 			var value = gridData[y + dy - gridDy][x + dx - gridDx] = data[y][x];
@@ -1044,6 +1047,18 @@ function readU8(stream) {
 	return stream.data[stream.index++] & 0xff;
 }
 
+// CONSUMES a 8-bit number from a Uint8Array.
+function readI8(stream) {
+	if (stream.index >= stream.data.length) {
+		throw Error("Out of data");
+	}
+	var nombre = stream.data[stream.index++] & 0xff;
+	if (nombre & 0x80)
+		return - ((nombre^0xff)+1);
+	else
+		return nombre;
+}
+
 // CONSUMES a 16-bit number from a Uint8Array.
 function readU16(stream) {
 	let b0 = readU8(stream), b1 = readU8(stream);
@@ -1161,9 +1176,9 @@ function importFontFile(data) {
 			// Construct range objects.
 			for (var x = rstart; x <= rend; x++) {
 				// Bitmap draw X offset.
-				let dx = readU8(stream);
+				let dx = readI8(stream);
 				// Bitmap draw Y offset.
-				let dy = readU8(stream);
+				let dy = readI8(stream);
 				// Bitmap drawn width.
 				let dw = readU8(stream);
 				// Bitmap drawn height.
