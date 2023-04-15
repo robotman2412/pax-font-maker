@@ -35,7 +35,7 @@
 			<!-- Bitmap settings !-->
 			<input value="2" type="number" id="bpp">
 			<label for="bpp">Bits per pixel</label><br>
-			<input value="2" type="checkbox" id="show_advanced">
+			<input type="checkbox" id="show_advanced">
 			<label for="show_advanced">Show advanced options</label><br>
 			
 			<!-- Visualisations !-->
@@ -121,18 +121,19 @@
 				<option value="unsaved">Unsaved</option>
 				<option value="new_slot">New save slot...</option>
 			</select><br>
-			<button id="download">Export as JSON</button>
 			<input style="display:none" id="import_file" type="file">
-			<button id="import_button">Import from JSON</button>
+			<button id="import_button">Import .json or .pax_font</button>
 			<button id="delete">Delete this font</button><br>
 			
 			<hr>
 			<h3>Exporting</h3>
 			
 			<!-- Exporting !-->
-			<!-- <button id="export_c">Export as .c</button> -->
+			<button id="download">Export as .json</button>
 			<button id="export_c_h">Export as .c, .h</button>
 			<button id="export_file">Export as .pax_font</button><br>
+			<input type="checkbox" id="export_mono">
+			<label for="export_mono">Export as monospace font</label><br>
 		</div>
 	</body>
 </html>

@@ -201,6 +201,12 @@ function loaded() {
 	}
 	
 	// Set up the grid!
+	document.getElementById("ruler_x").value = -gridDx;
+	document.getElementById("ruler_y").value = -gridDy;
+	document.getElementById("canvas_width").value = gridWidth;
+	document.getElementById("canvas_height").value = gridHeight;
+	document.getElementById("glyph_width").value = glyphWidth;
+	document.getElementById("glyph_height").value = glyphHeight;
 	resizeGrid(gridWidth, gridHeight);
 	showGlyphOutlines();
 	
@@ -219,7 +225,15 @@ function loaded() {
 	importFileElem = document.getElementById("import_file")
 	importFileElem.onchange = () => {
 		if (importFileElem.files[0]) {
-			importFileElem.files[0].text().then((text) => importData(text, false));
+			importFileElem.files[0].text().then((text) => {
+				if (text.startsWith("pax_font_t")) {
+					importFileElem.files[0].arrayBuffer().then((buffer) => {
+						importFontFile(new Uint8Array(buffer));
+					});
+				} else {
+					importData(text, false);
+				}
+			});
 		}
 	};
 	
@@ -244,23 +258,35 @@ function loaded() {
 	}
 	
 	// Exporting options.
-	// document.getElementById("export_c").onclick = () => {
-	// 	var id = convertName(font);
-	// 	var bpp = +document.getElementById("bpp").value;
-	// 	var exported = exportVariable(id, glyphHeight, bpp, font, false);
-	// 	downloadBase64(font + ".c", exported);
-	// };
 	document.getElementById("export_c_h").onclick = () => {
-		var id = convertName(font);
-		var bpp = +document.getElementById("bpp").value;
-		var exported = exportVariable(id, glyphHeight, bpp, font, true);
-		downloadBase64(font + ".c", exported.c);
-		downloadBase64(font + ".h", exported.h);
+		if (document.getElementById("export_mono").value) {
+			if (!isMonospaceFont()) {
+				alert("Cannot export as monospace font");
+				return;
+			}
+			var id = convertName(font);
+			var bpp = +document.getElementById("bpp").value;
+			var exported = exportMonospaceSimple(id, glyphWidth, glyphHeight, bpp, font, true);
+			downloadBase64(font + ".c", exported.c);
+			downloadBase64(font + ".h", exported.h);
+		} else {
+			var id = convertName(font);
+			var bpp = +document.getElementById("bpp").value;
+			var exported = exportVariable(id, glyphHeight, bpp, font, true);
+			downloadBase64(font + ".c", exported.c);
+			downloadBase64(font + ".h", exported.h);
+		}
 	};
 	document.getElementById("export_file").onclick = () => {
-		var bpp = +document.getElementById("bpp").value;
-		exported = exportFontFile(glyphHeight, bpp, font);
-		downloadBinary(font + ".pax_font", exported, false);
+		if (document.getElementById("export_mono").value) {
+			var bpp = +document.getElementById("bpp").value;
+			exported = exportFontFile(glyphHeight, bpp, font, true);
+			downloadBinary(font + ".pax_font", exported, false);
+		} else {
+			var bpp = +document.getElementById("bpp").value;
+			exported = exportFontFile(glyphHeight, bpp, font, false);
+			downloadBinary(font + ".pax_font", exported, false);
+		}
 	};
 }
 
@@ -1010,9 +1036,249 @@ function downloadBinary(name, data) {
 	a.click();
 }
 
+// CONSUMES a 8-bit number from a Uint8Array.
+function readU8(stream) {
+	if (stream.index >= stream.data.length) {
+		throw Error("Out of data");
+	}
+	return stream.data[stream.index++] & 0xff;
+}
+
+// CONSUMES a 16-bit number from a Uint8Array.
+function readU16(stream) {
+	let b0 = readU8(stream), b1 = readU8(stream);
+	return b0 + b1 * 0x100;
+}
+
+// CONSUMES a 16-bit number from a Uint8Array.
+function readU32(stream) {
+	let b0 = readU8(stream), b1 = readU8(stream), b2 = readU8(stream), b3 = readU8(stream);
+	return b0 + b1 * 0x100 + b2 * 0x10000 + b3 * 0x1000000;
+}
+
+// CONSUMES a 16-bit number from a Uint8Array.
+function readU64(stream) {
+	let b0 = readU8(stream), b1 = readU8(stream), b2 = readU8(stream), b3 = readU8(stream);
+	let b4 = readU8(stream), b5 = readU8(stream), b6 = readU8(stream), b7 = readU8(stream);
+	return b0 + b1 * 0x100 + b2 * 0x10000 + b3 * 0x1000000
+		+ b4 * 0x100000000 + b5 * 0x10000000000 + b6 * 0x1000000000000 + b7 * 0x100000000000000;
+}
+
+// CONSUMES a string form a Uint8Array.
+function readString(stream, len) {
+	if (stream.data.length < stream.index + len) {
+		throw Error("Out of data");
+	}
+	var data = stream.data.subarray(stream.index, stream.index + len);
+	stream.index += len;
+	return new TextDecoder().decode(data);
+}
+
+// CONSUMES a few bytes from a Uint8Array.
+function readBytes(stream, len) {
+	if (stream.data.length < stream.index + len) {
+		throw Error("Out of data");
+	}
+	var data = stream.data.subarray(stream.index, stream.index + len);
+	stream.index += len;
+	return data;
+}
+
+// Imports the font from PAX font file.
+function importFontFile(data) {
+	var stream = { data: data, index: 0 };
+	
+	// Check magic.
+	var magic_str = readString(stream, 11);
+	if (magic_str != "pax_font_t\0") {
+		throw Error("File magic mismatch");
+	}
+	
+	// Check loader version.
+	var loader_ver = readU16(stream);
+	if (loader_ver != 1) {
+		throw Error("Unsupported font version " + loader_ver + " (supported: 1)");
+	}
+	
+	// Number of stored pax_bmpv_t.
+	var n_bmpv     = readU64(stream);
+	// Size of the combined bitmaps.
+	var n_bitmap   = readU64(stream);
+	// Size of the font name.
+	var n_name     = readU64(stream);
+	// Number of ranges in the font.
+	var n_ranges   = readU64(stream);
+	
+	// Default point size.
+	var default_sz = readU16(stream);
+	// Whether antialiassing is recommended.
+	var do_aa      = readU8(stream);
+	
+	fontUrl     = "";
+	
+	glyphs      = {};
+	fontGlyphs  = [];
+	fontRanges  = [];
+	glyphHeight = default_sz;
+	
+	for (var i = 0; i < n_ranges; i++) {
+		// Range type (0: monospace, 1: variable pitch).
+		let rtype  = readU8(stream);
+		// Range start glyph.
+		let rstart = readU32(stream);
+		// Range end glyph.
+		let rend   = readU32(stream);
+		
+		// Range length.
+		let rlen   = rend - rstart + 1;
+		
+		if (rtype == 0 /* PAX_FONT_TYPE_BITMAP_MONO */) {
+			// Range width.
+			let gwidth  = readU8(stream);
+			// Range height.
+			let gheight = readU8(stream);
+			// Range bits per pixel.
+			let gbpp    = readU8(stream);
+			
+			// Construct range objects.
+			for (var x = rstart; x <= rend; x++) {
+				glyphs[x] = {
+					bounds: { x: 0, y: 0, width: gwidth, height: gheight },
+					glyph: x,
+					width: gwidth
+				};
+			}
+			fontRanges = fontRanges.concat({
+				start: rstart, end: rend, bpp: gbpp, type: rtype, width: gwidth, height: gheight
+			});
+			
+		} else if (rtype == 1 /* PAX_FONT_TYPE_BITMAP_VAR */) {
+			// Range height.
+			let gheight = readU8(stream);
+			// Range bits per pixel.
+			let gbpp    = readU8(stream);
+			
+			// Construct range objects.
+			for (var x = rstart; x <= rend; x++) {
+				// Bitmap draw X offset.
+				let dx = readU8(stream);
+				// Bitmap draw Y offset.
+				let dy = readU8(stream);
+				// Bitmap drawn width.
+				let dw = readU8(stream);
+				// Bitmap drawn height.
+				let dh = readU8(stream);
+				// Bitmap measured width.
+				let gwidth = readU8(stream);
+				// Bitmap index.
+				let gindex = readU64(stream);
+				
+				glyphs[x] = {
+					bounds: { x: dx, y: dy, width: dw, height: dh },
+					glyph: x,
+					width: gwidth,
+					bmpindex: gindex
+				};
+			}
+			fontRanges = fontRanges.concat({
+				start: rstart, end: rend, bpp: gbpp, type: rtype
+			});
+			
+		} else {
+			throw Error("File corruption: Font type invalid (" + rtype + " in range " + i + ", offset " + (stream.index-8) + ")");
+		}
+	}
+	
+	// Interpret bitmap data.
+	for (var i = 0; i < fontRanges.length; i++) {
+		let range = fontRanges[i];
+		if (range.type == 0 /* PAX_FONT_TYPE_BITMAP_MONO */) {
+			// Determine size parameters.
+			let bpp   = range.bpp;
+			let ppb   = Math.floor(8 / bpp);
+			let y_mul = Math.floor((range.width * bpp + 7) / 8);
+			let glen  = y_mul * range.height;
+			let mask  = (1 << bpp) - 1;
+			let imask = ppb - 1;
+			
+			for (var glyph = range.start; glyph <= range.end; glyph++) {
+				fontGlyphs = fontGlyphs.concat(glyph);
+				// Collect raw glyph data.
+				let raw    = readBytes(stream, glen);
+				// Read pixels.
+				glyphs[glyph].data = [];
+				glyphs[glyph].visible = false;
+				for (var y = 0; y < range.height; y++) {
+					glyphs[glyph].data[y] = [];
+					for (var x = 0; x < range.width; x++) {
+						// Extract pixel data.
+						let gindex  = Math.floor(x / ppb) + y_mul * y;
+						let pixdat  = (raw[gindex] >> (bpp * (x & imask))) & mask;
+						let fpixdat = pixdat / mask;
+						glyphs[glyph].visible |= !!pixdat;
+						
+						// Write to glyph data.
+						glyphs[glyph].data[y][x] = fpixdat;
+					}
+				}
+			}
+			
+		} else /* PAX_FONT_TYPE_BITMAP_VAR */ {
+			for (var glyph = range.start; glyph <= range.end; glyph++) {
+				fontGlyphs = fontGlyphs.concat(glyph);
+				// Determine size parameters.
+				let bpp   = range.bpp;
+				let ppb   = Math.floor(8 / bpp);
+				let y_mul = Math.floor((glyphs[glyph].bounds.width * bpp + 7) / 8);
+				let glen  = y_mul * glyphs[glyph].bounds.height;
+				let mask  = (1 << bpp) - 1;
+				let imask = ppb - 1;
+				
+				// Collect raw glyph data.
+				let raw    = readBytes(stream, glen);
+				// Read pixels.
+				glyphs[glyph].data = [];
+				glyphs[glyph].visible = false;
+				for (var y = 0; y < glyphs[glyph].bounds.height; y++) {
+					glyphs[glyph].data[y] = [];
+					for (var x = 0; x < glyphs[glyph].bounds.width; x++) {
+						// Extract pixel data.
+						let gindex  = Math.floor(x / ppb) + y_mul * y;
+						let pixdat  = (raw[gindex] >> (bpp * (x & imask))) & mask;
+						glyphs[glyph].visible |= !!pixdat;
+						let fpixdat = pixdat / mask;
+						
+						// Write to glyph data.
+						glyphs[glyph].data[y][x] = fpixdat;
+					}
+				}
+			}
+			
+		}
+	}
+	
+	font = readString(stream, n_name);
+	saveName = font;
+	document.getElementById("font_name").value = font;
+	updateRanges();
+	selectGlyph(0x41);
+}
+
 
 
 /* ==== Exporting functions ==== */
+
+// Test whether the current font can be exported as monospace.
+function isMonospaceFont() {
+	let w = glyphWidth;
+	let h = glyphHeight;
+	for (glyph in glyphs) {
+		if (glyphs[glyph].width != w) {
+			return false;
+		}
+	}
+	return true;
+}
 
 // Converts raw glyph data to bytes.
 function glyphToBytes(width, height, data, bpp) {
@@ -1026,8 +1292,24 @@ function glyphToBytes(width, height, data, bpp) {
 			var byteIndex   = Math.floor((x*bpp) / 8) + bytesPerLine * y;
 			var rounded     = Math.round(data[y][x] * resolution);
 			out[byteIndex] |= rounded << bitIndex;
-			var spill       = out[byteIndex] & ~255;
-			if (spill) out[byteIndex + 1] |= spill >> 8;
+		}
+	}
+	
+	return out;
+}
+
+// Glyph to bytes: monospace edition.
+function monoGlyphToBytes(width, height, bounds, data, bpp) {
+	var resolution = (1 << bpp) - 1;
+	var bytesPerLine = Math.ceil(width * bpp / 8);
+	var out = Array(bytesPerLine * height);
+	
+	for (var y = 0; y < bounds.height; y++) {
+		for (var x = 0; x < bounds.width; x++) {
+			var bitIndex    = ((x + bounds.x)*bpp) % 8;
+			var byteIndex   = Math.floor(((x + bounds.x)*bpp) / 8) + bytesPerLine * (y + bounds.y);
+			var rounded     = Math.round(data[y][x] * resolution);
+			out[byteIndex] |= rounded << bitIndex;
 		}
 	}
 	
@@ -1063,7 +1345,8 @@ function objectToC(data, prototype, isConst=true) {
 }
 
 // Exports the font as monospace, cropping anything outsize the box.
-function exportMonospaceSimple(id, width, height, bpp) {
+function exportMonospaceSimple(id, width, height, bpp, name, split=true) {
+	console.log("Exporting monspace font '" + name + "' (" + id + "; " + width + "x" + height + "; " + bpp + "bpp)");
 	var raw = '#include <pax_fonts.h>\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
@@ -1097,11 +1380,35 @@ function exportMonospaceSimple(id, width, height, bpp) {
 	}
 	raw += `\n};\nconst size_t ${id}_ranges_len = sizeof(${id}_ranges) / sizeof(pax_font_range_t);\n`;
 	
-	return raw;
+	// Create the font definition.
+	var header = '';
+	if (split && name) {
+		header += 
+			`// Generated file, edit at your own risk!\n`+
+			`#pragma once\n\n`+
+			`extern const pax_font_range_t ${id}_ranges[${fontRanges.length}];\n\n`;
+	}
+	if (name) {
+		header +=
+			`// Completed font.\n`+
+			`const pax_font_t ${id} = {\n`+
+			`	.name         = "${name}",\n`+
+			`	.n_ranges     = ${fontRanges.length},\n`+
+			`	.ranges       = ${id}_ranges,\n`+
+			`	.default_size = ${height},\n`+
+			`	.recommend_aa = ${bpp > 1 ? "true" : "false"},\n`+
+			`};\n\n`;
+	}
+	
+	if (split) {
+		return {c: raw, h: header};
+	} else {
+		return raw + header;
+	}
 }
 
 // Exports the font as variable pitch.
-function exportVariable(id, height, bpp, name, split) {
+function exportVariable(id, height, bpp, name, split=true) {
 	var raw = '// Generated file, edit at your own risk!\n#include <pax_fonts.h>\n\n// Raw data.\n';
 	
 	// Start with outputting some ranges.
@@ -1219,7 +1526,9 @@ function appendString(to, string, withTerm=false) {
 }
 
 // Exports the font as a PAX font file.
-function exportFontFile(height, bpp, name="A font", antialiasing=true) {
+function exportFontFile(height, bpp, name="A font", monospace=false) {
+	let antialiasing    = bpp > 1;
+	
 	var raw = [];
 	
 	var rangeDims       = [];
@@ -1228,50 +1537,67 @@ function exportFontFile(height, bpp, name="A font", antialiasing=true) {
 	var totalBitmapSize = 0;
 	var totalDims       = 0;
 	
+	var monoWidth       = glyphs[fontGlyphs[0]].width;
+	
 	// Start with preprocessing some ranges.
-	for (var i = 0; i < fontRanges.length; i++) {
-		var range = fontRanges[i];
-		var indices = [];
-		
-		// Create some byte arrays.
-		var bytes = [];
-		for (var glyph = range.start; glyph <= range.end; glyph++) {
-			var data = glyphs[glyph];
-			indices = indices.concat(bytes.length);
-			if (data.visible) {
-				bytes = bytes.concat(glyphToBytes(data.bounds.width, data.bounds.height, data.data, bpp));
+	if (monospace) {
+		for (var i = 0; i < fontRanges.length; i++) {
+			var range = fontRanges[i];
+			
+			// Create some byte arrays.
+			var bytes = [];
+			for (var glyph = range.start; glyph <= range.end; glyph++) {
+				var data = glyphs[glyph];
+				bytes = bytes.concat(monoGlyphToBytes(monoWidth, height, data.bounds, data.data, bpp));
 			}
+			rangeBitmaps[i]  = bytes;
+			totalBitmapSize += bytes.length;
 		}
-		rangeBitmaps[i]  = bytes;
-		totalBitmapSize += bytes.length;
-		
-		// Then create the dimensions arrays.
-		rangeDims[i] = [];
-		for (var glyph = range.start; glyph <= range.end; glyph++) {
-			var data = glyphs[glyph];
-			var dims;
-			if (data.visible) {
-				dims = {
-					draw_x:         data.bounds.x,
-					draw_y:         data.bounds.y,
-					draw_w:         data.bounds.width,
-					draw_h:         data.bounds.height,
-					measured_width: data.width,
-					index:          indices[glyph-range.start],
-				};
-			} else {
-				dims = {
-					draw_x:         0,
-					draw_y:         0,
-					draw_w:         0,
-					draw_h:         0,
-					measured_width: data.width,
-					index:          indices[glyph-range.start],
-				};
+	} else {
+		for (var i = 0; i < fontRanges.length; i++) {
+			var range = fontRanges[i];
+			var indices = [];
+			
+			// Create some byte arrays.
+			var bytes = [];
+			for (var glyph = range.start; glyph <= range.end; glyph++) {
+				var data = glyphs[glyph];
+				indices = indices.concat(bytes.length);
+				if (data.visible) {
+					bytes = bytes.concat(glyphToBytes(data.bounds.width, data.bounds.height, data.data, bpp));
+				}
 			}
-			rangeDims[i][glyph-range.start] = dims;
+			rangeBitmaps[i]  = bytes;
+			totalBitmapSize += bytes.length;
+			
+			// Then create the dimensions arrays.
+			rangeDims[i] = [];
+			for (var glyph = range.start; glyph <= range.end; glyph++) {
+				var data = glyphs[glyph];
+				var dims;
+				if (data.visible) {
+					dims = {
+						draw_x:         data.bounds.x,
+						draw_y:         data.bounds.y,
+						draw_w:         data.bounds.width,
+						draw_h:         data.bounds.height,
+						measured_width: data.width,
+						index:          indices[glyph-range.start],
+					};
+				} else {
+					dims = {
+						draw_x:         0,
+						draw_y:         0,
+						draw_w:         0,
+						draw_h:         0,
+						measured_width: data.width,
+						index:          indices[glyph-range.start],
+					};
+				}
+				rangeDims[i][glyph-range.start] = dims;
+			}
+			totalDims += rangeDims[i].length;
 		}
-		totalDims += rangeDims[i].length;
 	}
 	
 	/* ==== MAGIC BYTES ==== */
@@ -1299,34 +1625,40 @@ function exportFontFile(height, bpp, name="A font", antialiasing=true) {
 	for (var i = 0; i < fontRanges.length; i++) {
 		var range = fontRanges[i];
 		
-		// Range type (variable pitch).
-		appendRawNumber(raw, 1,           1);
+		// Range type.
+		appendRawNumber(raw, +!monospace, 1);
 		// Range start.
 		appendRawNumber(raw, range.start, 4);
 		// Range end.
 		appendRawNumber(raw, range.end,   4);
+		if (monospace) {
+			// Monospace range width.
+			appendRawNumber(raw, monoWidth, 1);
+		}
 		// Range height.
 		appendRawNumber(raw, height,      1);
 		// Range bit per pixel.
 		appendRawNumber(raw, bpp,         1);
 		
-		// Range bitmap dimensions.
-		for (var x = 0; x < rangeDims[i].length; x++) {
-			var bmpv = rangeDims[i][x];
-			console.log(i, x, bmpv);
-			
-			// Bitmap draw X offset.
-			appendRawNumber(raw, bmpv.draw_x,         1);
-			// Bitmap draw Y offset.
-			appendRawNumber(raw, bmpv.draw_y,         1);
-			// Bitmap drawn width.
-			appendRawNumber(raw, bmpv.draw_w,         1);
-			// Bitmap drawn height.
-			appendRawNumber(raw, bmpv.draw_h,         1);
-			// Bitmap measured width.
-			appendRawNumber(raw, bmpv.measured_width, 1);
-			// Bitmap data index.
-			appendRawNumber(raw, bmpv.index,          8);
+		if (!monospace) {
+			// Variable pitch range bitmap dimensions.
+			for (var x = 0; x < rangeDims[i].length; x++) {
+				var bmpv = rangeDims[i][x];
+				console.log(i, x, bmpv);
+				
+				// Bitmap draw X offset.
+				appendRawNumber(raw, bmpv.draw_x,         1);
+				// Bitmap draw Y offset.
+				appendRawNumber(raw, bmpv.draw_y,         1);
+				// Bitmap drawn width.
+				appendRawNumber(raw, bmpv.draw_w,         1);
+				// Bitmap drawn height.
+				appendRawNumber(raw, bmpv.draw_h,         1);
+				// Bitmap measured width.
+				appendRawNumber(raw, bmpv.measured_width, 1);
+				// Bitmap data index.
+				appendRawNumber(raw, bmpv.index,          8);
+			}
 		}
 	}
 	
