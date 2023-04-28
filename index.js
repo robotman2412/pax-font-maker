@@ -1029,6 +1029,10 @@ function downloadBase64(name, data, isText=true) {
 	a.click();
 }
 
+
+
+/* ==== Importing functions ==== */
+
 // Turns binary into base64.
 function bin2b64(binary) {
 	let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
